@@ -22,15 +22,23 @@ jobs:
           set -euxo pipefail
 
           VERSION="153.0.8010.37"
-          CROMITE_SHA="a711448b5f74eb02bc5f2e71d6db9bde12150311"
-          IMAGE="uazo/cromite-build:${VERSION}-${CROMITE_SHA}"
+          IMAGE="uazo/chromium:${VERSION}"
 
-          mkdir -p "$GITHUB_WORKSPACE/artifacts"
+          mkdir -p "$GITHUB_WORKSPACE/artifacts" "$GITHUB_WORKSPACE/cromite-source"
+          git clone --depth 1 https://github.com/uazo/cromite.git "$GITHUB_WORKSPACE/cromite-source"
+
+          # The upstream container contains the matching Chromium source and
+          # build toolchain. We apply Cromite's normal patch set, except for
+          # the one patch that explicitly disables Android MediaDrm
+          # preprovisioning.
+          sed -i '/^Disable-DRM-media-origin-IDs-preprovisioning\.patch$/d' \
+            "$GITHUB_WORKSPACE/cromite-source/build/cromite_patches_list.txt"
+
           docker pull "$IMAGE"
 
           docker run --rm \
+            -v "$GITHUB_WORKSPACE/cromite-source:/home/lg/working_dir/cromite" \
             -v "$GITHUB_WORKSPACE/artifacts:/output" \
-            -e VERSION="$VERSION" \
             "$IMAGE" bash -lc '
               set -euxo pipefail
               export WORKSPACE=/home/lg/working_dir
@@ -40,16 +48,14 @@ jobs:
               export PATH="$WORKSPACE/chromium/src/third_party/llvm-build/Release+Asserts/bin:$WORKSPACE/depot_tools:/usr/local/go/bin:$WORKSPACE/mtool/bin:$PATH"
 
               cd "$WORKSPACE/chromium/src"
+              git config user.email "drm-build@example.invalid"
+              git config user.name "Cromite DRM Build"
 
-              # Cromite applies this patch by default. Revert only that patch;
-              # this restores Chromium's normal Android MediaDrm preprovisioning
-              # path without bundling or extracting Widevine components.
-              DRM_COMMIT="$(git log --all --format=%H --grep="Disable DRM media origin IDs preprovisioning" -n 1 || true)"
-              test -n "$DRM_COMMIT"
-              git revert --no-edit "$DRM_COMMIT"
+              # Apply the current Cromite patch set, with only the DRM
+              # preprovisioning-disabling patch removed.
+              bash "$WORKSPACE/cromite/tools/images/cromite-source/apply-cromite-patches.sh"
 
-              # Safety check: the Cromite feature-disabling line must no longer
-              # exist in the checked-out Chromium source.
+              # Confirm that the disabling patch did not get applied.
               if git grep -n "SET_CROMITE_FEATURE_DISABLED(kMediaDrmPreprovisioning)" -- .; then
                 echo "DRM disabling patch is still present" >&2
                 exit 1
