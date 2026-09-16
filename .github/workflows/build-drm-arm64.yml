@@ -23,11 +23,22 @@ jobs:
           mkdir -p "$GITHUB_WORKSPACE/artifacts" "$GITHUB_WORKSPACE/cromite-source"
           git clone --depth 1 https://github.com/uazo/cromite.git "$GITHUB_WORKSPACE/cromite-source"
 
-          # Cromite intentionally disables Android DRM media pre-provisioning.
-          # Remove only that disabling patch; leave the rest of Cromite intact.
           PATCH_LIST="$GITHUB_WORKSPACE/cromite-source/build/cromite_patches_list.txt"
-          sed -i '/^Disable-DRM-media-origin-IDs-preprovisioning\.patch$/d' "$PATCH_LIST"
-          ! grep -F 'Disable-DRM-media-origin-IDs-preprovisioning.patch' "$PATCH_LIST"
+
+          # Cromite's stock patch set contains an opt-out feature that disables
+          # external intents by default. That breaks sites which hand playback
+          # off to an installed Android player. Remove that blocker completely.
+          sed -i \
+            -e '/^Add-flag-to-disable-external-intent-requests\.patch$/d' \
+            -e '/^Block-Intents-While-Locked\.patch$/d' \
+            -e '/^Disable-DRM-media-origin-IDs-preprovisioning\.patch$/d' \
+            "$PATCH_LIST"
+
+          # Hard fail if any of the known external-intent blockers or the
+          # DRM-preprovisioning blocker remain in the patch stack.
+          ! grep -E \
+            '^(Add-flag-to-disable-external-intent-requests|Block-Intents-While-Locked|Disable-DRM-media-origin-IDs-preprovisioning)\.patch$' \
+            "$PATCH_LIST"
 
       - name: Build with Cromite Android build container
         shell: bash
