@@ -40,18 +40,15 @@ jobs:
             "$IMAGE" bash -lc '
               set -euxo pipefail
 
-              # uazo/chromium keeps the Chromium checkout under
-              # /home/lg/working_dir and depot_tools at /home/lg/depot_tools.
               export WORKSPACE=/home/lg/working_dir
               export HOME=/home/lg/working_dir
               export TARGET_ISDEBUG=true
               export TARGET_OS=android
+              export DEPOT_TOOLS=/home/lg/depot_tools
               export PATH="/home/lg/depot_tools:$WORKSPACE/chromium/src/third_party/llvm-build/Release+Asserts/bin:/usr/local/go/bin:/home/lg/mtool:$PATH"
 
-              DEPOT_TOOLS=/home/lg/depot_tools
-
-              # Bootstrap the image's depot_tools Python environment. This
-              # creates python3_bin_reldir.txt when the lightweight image lacks it.
+              # Bootstrap depot_tools Python when the image does not already
+              # contain the bootstrap marker required by python3.
               if [ ! -f "$DEPOT_TOOLS/python3_bin_reldir.txt" ]; then
                 if [ -x "$DEPOT_TOOLS/ensure_bootstrap" ]; then
                   "$DEPOT_TOOLS/ensure_bootstrap"
@@ -74,8 +71,6 @@ jobs:
               "$PYTHON3" --version
               "$DEPOT_TOOLS/gn" --version
 
-              # Cromite's patch script expects to be invoked from
-              # /home/lg/working_dir, not chromium/src.
               cd "$WORKSPACE"
               git -C chromium/src config user.email "drm-build@example.invalid"
               git -C chromium/src config user.name "Cromite DRM Build"
@@ -84,8 +79,7 @@ jobs:
 
               cd "$WORKSPACE/chromium/src"
 
-              # Safety check: the explicit Cromite DRM-disabling feature must
-              # not be present after the patch set is applied.
+              # Verify the Cromite MediaDrm disabling feature was not applied.
               if git grep -n "SET_CROMITE_FEATURE_DISABLED(kMediaDrmPreprovisioning)" -- .; then
                 echo "DRM disabling patch is still present" >&2
                 exit 1
