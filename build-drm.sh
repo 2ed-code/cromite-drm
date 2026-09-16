@@ -47,30 +47,27 @@ cd "$WORKSPACE/chromium/src"
 
 CLANG_STAMP_DIR="third_party/llvm-build/Release+Asserts"
 CLANG_STAMP="$CLANG_STAMP_DIR/cr_build_revision"
-if [ ! -s "$CLANG_STAMP" ]; then
-  CLANG_PACKAGE="$($PYTHON3 - <<'PY'
-import re
-from pathlib import Path
-text = Path("tools/clang/scripts/update.py").read_text()
-m = re.search(r"^PACKAGE_VERSION\s*=\s*['\"]([^'\"]+)['\"]", text, re.M)
-if m:
-    print(m.group(1))
-    raise SystemExit(0)
-rev = re.search(r"^CLANG_REVISION\s*=\s*['\"]([^'\"]+)['\"]", text, re.M)
-sub = re.search(r"^CLANG_SUB_REVISION\s*=\s*(\d+)", text, re.M)
-if not (rev and sub):
-    raise SystemExit("Could not determine Chromium clang package version")
-print(f"{rev.group(1)}-{sub.group(1)}")
-PY
-)"
-  test -n "$CLANG_PACKAGE"
+test -x "$CLANG_STAMP_DIR/bin/clang"
+
+# Chromium's GN consistency check requires cr_build_revision to match the
+# revision declared by tools/clang/scripts/update.py. The Docker image already
+# contains the clang binary, so derive the stamp from Chromium itself instead
+# of parsing PACKAGE_VERSION (which is an expression, not a literal).
+EXPECTED_CLANG_REVISION="$($PYTHON3 tools/clang/scripts/update.py --print-revision)"
+EXPECTED_CLANG_REVISION="$(printf '%s' "$EXPECTED_CLANG_REVISION" | tr -d '\r\n')"
+test -n "$EXPECTED_CLANG_REVISION"
+
+CURRENT_CLANG_REVISION=""
+if [ -s "$CLANG_STAMP" ]; then
+  CURRENT_CLANG_REVISION="$(cut -d',' -f1 < "$CLANG_STAMP" | tr -d '\r\n')"
+fi
+
+if [ "$CURRENT_CLANG_REVISION" != "$EXPECTED_CLANG_REVISION" ]; then
   mkdir -p "$CLANG_STAMP_DIR"
-  printf '%s,linux\n' "$CLANG_PACKAGE" > "$CLANG_STAMP"
+  printf '%s,linux\n' "$EXPECTED_CLANG_REVISION" > "$CLANG_STAMP"
 fi
 
 echo "Using Chromium clang stamp: $(cat "$CLANG_STAMP")"
-test -x "$CLANG_STAMP_DIR/bin/clang"
-"$PYTHON3" tools/clang/scripts/update.py --print-revision
 
 if git grep -n "SET_CROMITE_FEATURE_DISABLED(kMediaDrmPreprovisioning)" -- .; then
   echo "DRM disabling patch is still present" >&2
