@@ -32,31 +32,55 @@ test -x "$VPYTHON3"
 
 cd "$WORKSPACE"
 
-# Cromite applies its normal patch stack first. The workflow removes the
-# specific DRM-disabling patch from the patch list before this script runs.
+# Apply Cromite's normal patch stack. The GitHub workflow removes only
+# Cromite's DRM-preprovisioning-disabling patch before this script runs.
 git -C chromium/src config user.email "cromite-drm-build@example.invalid"
 git -C chromium/src config user.name "Cromite DRM Build"
-bash "$WORKSPACE/cromite/tools/images/cromite-source/apply-cromite-patches.sh"
+bash "$WORKSPACE/chromium/src/cromite/tools/images/cromite-source/apply-cromite-patches.sh"
 
 cd "$WORKSPACE/chromium/src"
 
-# Explicitly keep Chromium's Android Widevine/MediaDrm registration enabled.
-# No proprietary CDM, key, certificate, or license bypass is added here.
+# Android Chromium uses the device's Android MediaDrm implementation for
+# Widevine. We do not bundle, copy, or bypass any proprietary Widevine CDM,
+# certificate, key, or license. Normal Android external-intent handling is
+# intentionally left untouched; this project does not add an external-app
+# blocker.
 ARGS="target_os = \"android\" target_cpu = \"arm64\" $(cat ../../cromite/build/cromite.gn_args)"
 ARGS="$ARGS chrome_public_manifest_package = \"org.cromite.cromite\""
 ARGS="$ARGS enable_widevine = true"
+ARGS="$ARGS enable_platform_aac_audio = true"
+ARGS="$ARGS enable_platform_h264_video = true"
+ARGS="$ARGS proprietary_codecs = true"
+ARGS="$ARGS ffmpeg_branding = \"Chrome\""
 
 rm -rf out/arm64_drm
 gn gen --args="$ARGS" out/arm64_drm
+
+# Build-time invariants: fail instead of producing an APK if the important
+# DRM/media configuration was not accepted by GN.
+gn args out/arm64_drm --list > /tmp/cromite-drm-gn-args.txt
+for required in \
+  'enable_widevine = true' \
+  'enable_platform_aac_audio = true' \
+  'enable_platform_h264_video = true' \
+  'proprietary_codecs = true' \
+  'ffmpeg_branding = "Chrome"'; do
+  grep -F "$required" /tmp/cromite-drm-gn-args.txt >/dev/null
+done
+
+# The disabling Cromite patch must never be present after patch application.
+! grep -R "Disable-DRM-media-origin-IDs-preprovisioning" \
+  "$WORKSPACE/chromium/src/cromite/build/cromite_patches_list.txt" >/dev/null 2>&1
 
 "$VPYTHON3" "$DEPOT_TOOLS/siso.py" ninja -C out/arm64_drm chrome_public_bundle --offline
 "$VPYTHON3" "$DEPOT_TOOLS/siso.py" ninja -C out/arm64_drm chrome_public_apk --offline
 
 APK="out/arm64_drm/apks/ChromePublic.apk"
-test -f "$APK"
+test -s "$APK"
+
 mkdir -p /output
 cp "$APK" /output/Cromite-DRM-Android-ARM64.apk
 printf '%s\n' "org.cromite.cromite" > /output/Cromite-DRM-package.txt
-printf '%s\n' "Android ARM64 + MediaDrm/Widevine registration" > /output/Cromite-DRM-status.txt
+printf '%s\n' "Android ARM64 + Android MediaDrm/Widevine + H.264/AAC" > /output/Cromite-DRM-status.txt
 cat ../../cromite/build/RELEASE > /output/Cromite-DRM-version.txt
 printf '%s\n' "$(git rev-parse HEAD)" > /output/Cromite-DRM-source-revision.txt
