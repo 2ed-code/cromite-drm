@@ -33,7 +33,7 @@ PY
 # Chromium-inspired ring. This is vector XML, so no binary assets are needed
 # in the bootstrap repository.
 ICON_DIR="$SRC/chrome/android/java/res_chromium_base"
-mkdir -p "$ICON_DIR/mipmap-anydpi-v26" "$ICON_DIR/drawable"
+mkdir -p "$ICON_DIR/mipmap-anydpi-v26" "$ICON_DIR/drawable" "$ICON_DIR/values"
 
 cat > "$ICON_DIR/mipmap-anydpi-v26/ic_launcher.xml" <<'EOF'
 <?xml version="1.0" encoding="utf-8"?>
@@ -62,13 +62,11 @@ cat > "$ICON_DIR/drawable/nexa_icon_foreground.xml" <<'EOF'
 </vector>
 EOF
 
-mkdir -p "$ICON_DIR/values"
-if ! grep -q 'name="nexa_icon_background"' "$ICON_DIR/values/colors.xml" 2>/dev/null; then
-  cat >> "$ICON_DIR/values/colors.xml" <<'EOF'
-
-    <!-- Nexa Browser launcher background -->
+cat > "$ICON_DIR/values/nexa_brand_colors.xml" <<'EOF'
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
     <color name="nexa_icon_background">#05070A</color>
+</resources>
 EOF
-fi
 
 echo "Branding applied: $APP_NAME ($PACKAGE_NAME)"
