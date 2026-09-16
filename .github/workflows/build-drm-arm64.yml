@@ -45,9 +45,10 @@ jobs:
               export TARGET_ISDEBUG=true
               export TARGET_OS=android
               export DEPOT_TOOLS=/home/lg/depot_tools
+              export DEPOT_TOOLS_UPDATE=0
 
-              # The Cromite build image does not contain depot_tools, so install
-              # the official Chromium depot_tools checkout inside the container.
+              # The Cromite image does not ship depot_tools. Clone the official
+              # Chromium checkout and bootstrap its pinned Python environment.
               if [ ! -d "$DEPOT_TOOLS/.git" ]; then
                 rm -rf "$DEPOT_TOOLS"
                 git clone --depth 1 https://chromium.googlesource.com/chromium/tools/depot_tools.git "$DEPOT_TOOLS"
@@ -55,9 +56,10 @@ jobs:
 
               export PATH="$DEPOT_TOOLS:$WORKSPACE/chromium/src/third_party/llvm-build/Release+Asserts/bin:/usr/local/go/bin:/home/lg/mtool:$PATH"
 
-              # Bootstrap depot_tools Python when this checkout has not yet been
-              # initialized. Different depot_tools revisions expose different
-              # bootstrap entry points, so try the supported entry points in order.
+              # Current depot_tools stores python3_bin_reldir.txt as a directory
+              # such as bootstrap-..._bin/python3/bin. Its python-bin/python3
+              # wrapper is the authoritative launcher; do not execute the
+              # directory named by the marker itself.
               if [ ! -f "$DEPOT_TOOLS/python3_bin_reldir.txt" ]; then
                 if [ -x "$DEPOT_TOOLS/ensure_bootstrap" ]; then
                   "$DEPOT_TOOLS/ensure_bootstrap"
@@ -66,18 +68,12 @@ jobs:
                 elif [ -x "$DEPOT_TOOLS/update_depot_tools" ]; then
                   "$DEPOT_TOOLS/update_depot_tools"
                 else
-                  echo "depot_tools was cloned but no bootstrap entry point was found" >&2
-                  ls -la "$DEPOT_TOOLS" >&2
+                  echo "No supported depot_tools bootstrap entry point found" >&2
                   exit 1
                 fi
               fi
 
-              test -f "$DEPOT_TOOLS/python3_bin_reldir.txt"
-              PYTHON3="$DEPOT_TOOLS/python3"
-              if [ ! -x "$PYTHON3" ]; then
-                PY_REL="$(cat "$DEPOT_TOOLS/python3_bin_reldir.txt")"
-                PYTHON3="$DEPOT_TOOLS/$PY_REL"
-              fi
+              PYTHON3="$DEPOT_TOOLS/python-bin/python3"
               test -x "$PYTHON3"
               "$PYTHON3" --version
               "$DEPOT_TOOLS/gn" --version
