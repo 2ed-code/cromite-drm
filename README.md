@@ -1,11 +1,14 @@
-# Custom Chromium Browser
+# Nexa Browser
 
-Initial foundation for a new Chromium-based browser built incrementally from Chromium + Cromite.
+Nexa Browser is a Chromium-based Android browser built incrementally from Chromium + Cromite, with project-owned branding and privacy features added as separate, reviewable changes.
 
-## v0.1 foundation
+## v0.2 — branding foundation
 
 - **Engine:** Chromium.
 - **Privacy base:** Cromite patches/features.
+- **App name:** `Nexa Browser`.
+- **Android package:** `com.nexa.browser`.
+- **Launcher icon:** project-owned dark adaptive/vector icon.
 - **Platform:** Android ARM64 (`arm64-v8a`) for the first build.
 - **DRM:** uses the device's legitimate Android MediaDrm implementation; this project does **not** bundle Widevine binaries, keys, certificates, or bypass license checks.
 - **Telemetry:** project default is disabled at the configuration level; each future telemetry-related change must be explicit and reviewable.
@@ -13,9 +16,19 @@ Initial foundation for a new Chromium-based browser built incrementally from Chr
 
 ## Build
 
-The GitHub Actions workflow builds the current pinned Cromite/Chromium base and publishes an ARM64 debug APK as an artifact.
+The GitHub Actions workflow builds the pinned Cromite/Chromium base, applies the Nexa branding layer, and publishes an ARM64 debug APK as an artifact named `NexaBrowser-v0.2-Android-ARM64`.
 
-This first version is intentionally a foundation rather than a fully rebranded browser. The next step is browser identity/branding, followed by privacy controls and other features one at a time.
+Branding is applied at build time by `branding/apply-branding.sh`. The upstream source tree remains disposable, which lets us add or remove individual features without turning the project into an unmaintainable Chromium fork.
+
+## Roadmap
+
+1. **Branding** — name, package ID, launcher icon. **Done.**
+2. **Privacy controls** — add the privacy features one at a time with isolated patches.
+3. **Ad/tracker blocking controls** — configurable and testable.
+4. **Per-site permissions and privacy settings.**
+5. **UI customization.**
+6. **DRM compatibility testing and build hardening.**
+7. **Release signing and reproducible release builds.**
 
 See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the incremental plan.
 
