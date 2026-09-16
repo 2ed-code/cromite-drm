@@ -1,4 +1,4 @@
-name: Custom Chromium Browser - Android ARM64
+name: Nexa Browser - Android ARM64
 
 on:
   push:
@@ -16,7 +16,7 @@ jobs:
       - name: Checkout project
         uses: actions/checkout@v4
 
-      - name: Build v0.1 foundation
+      - name: Build Nexa Browser v0.2 branding
         shell: bash
         run: |
           set -euo pipefail
@@ -35,19 +35,21 @@ jobs:
             -v "$GITHUB_WORKSPACE/cromite-source:/home/lg/working_dir/cromite" \
             -v "$GITHUB_WORKSPACE/artifacts:/output" \
             -v "$GITHUB_WORKSPACE/build-drm.sh:/home/lg/build-drm.sh:ro" \
+            -v "$GITHUB_WORKSPACE/branding:/home/lg/working_dir/cromite/branding:ro" \
             "$IMAGE" bash /home/lg/build-drm.sh
 
-      - name: Rename initial artifact
+      - name: Verify branding outputs
         shell: bash
         run: |
           set -euo pipefail
-          mv artifacts/Cromite-ARM64-DRM-debug.apk artifacts/CustomChromium-v0.1.0-ARM64-DRM-debug.apk
-          printf '0.1.0\n' > artifacts/CustomChromium-version.txt
+          test -f artifacts/NexaBrowser-ARM64-debug.apk
+          test "$(cat artifacts/NexaBrowser-name.txt)" = "Nexa Browser"
+          test "$(cat artifacts/NexaBrowser-package.txt)" = "com.nexa.browser"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: CustomChromium-v0.1.0-Android-ARM64
+          name: NexaBrowser-v0.2-Android-ARM64
           path: artifacts/
           if-no-files-found: error
           retention-days: 14
