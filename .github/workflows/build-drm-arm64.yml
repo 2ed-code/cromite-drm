@@ -1,4 +1,4 @@
-name: Cromite Android ARM64 - official DRM
+name: Custom Chromium Browser - Android ARM64
 
 on:
   push:
@@ -13,10 +13,10 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 360
     steps:
-      - name: Checkout DRM build repository
+      - name: Checkout project
         uses: actions/checkout@v4
 
-      - name: Build Cromite with Android DRM restored
+      - name: Build v0.1 foundation
         shell: bash
         run: |
           set -euo pipefail
@@ -26,7 +26,7 @@ jobs:
 
           git clone --depth 1 https://github.com/uazo/cromite.git "$GITHUB_WORKSPACE/cromite-source"
 
-          # Remove only Cromite's patch that disables MediaDrm preprovisioning.
+          # Keep the normal Android MediaDrm preprovisioning path.
           sed -i '/^Disable-DRM-media-origin-IDs-preprovisioning\.patch$/d' \
             "$GITHUB_WORKSPACE/cromite-source/build/cromite_patches_list.txt"
 
@@ -37,10 +37,17 @@ jobs:
             -v "$GITHUB_WORKSPACE/build-drm.sh:/home/lg/build-drm.sh:ro" \
             "$IMAGE" bash /home/lg/build-drm.sh
 
+      - name: Rename initial artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          mv artifacts/Cromite-ARM64-DRM-debug.apk artifacts/CustomChromium-v0.1.0-ARM64-DRM-debug.apk
+          printf '0.1.0\n' > artifacts/CustomChromium-version.txt
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Cromite-ARM64-DRM
+          name: CustomChromium-v0.1.0-Android-ARM64
           path: artifacts/
           if-no-files-found: error
           retention-days: 14
