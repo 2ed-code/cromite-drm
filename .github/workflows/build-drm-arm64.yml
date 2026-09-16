@@ -47,19 +47,19 @@ jobs:
               export DEPOT_TOOLS=/home/lg/depot_tools
               export DEPOT_TOOLS_UPDATE=0
 
-              # The Cromite image does not ship depot_tools. Clone the official
-              # Chromium checkout and bootstrap its pinned Python environment.
+              # The image contains the Chromium source/build environment but
+              # not a usable depot_tools checkout for this standalone runner.
               if [ ! -d "$DEPOT_TOOLS/.git" ]; then
                 rm -rf "$DEPOT_TOOLS"
                 git clone --depth 1 https://chromium.googlesource.com/chromium/tools/depot_tools.git "$DEPOT_TOOLS"
               fi
 
-              export PATH="$DEPOT_TOOLS:$WORKSPACE/chromium/src/third_party/llvm-build/Release+Asserts/bin:/usr/local/go/bin:/home/lg/mtool:$PATH"
+              # Cromite's own build environment puts GN in buildtools/linux64;
+              # depot_tools' gn wrapper only locates it when that directory is
+              # also on PATH.
+              export PATH="$WORKSPACE/chromium/src/buildtools/linux64:$DEPOT_TOOLS:$WORKSPACE/chromium/src/third_party/llvm-build/Release+Asserts/bin:/usr/local/go/bin:/home/lg/mtool/bin:$PATH"
 
-              # Current depot_tools stores python3_bin_reldir.txt as a directory
-              # such as bootstrap-..._bin/python3/bin. Its python-bin/python3
-              # wrapper is the authoritative launcher; do not execute the
-              # directory named by the marker itself.
+              # Bootstrap the Python runtime used by current depot_tools.
               if [ ! -f "$DEPOT_TOOLS/python3_bin_reldir.txt" ]; then
                 if [ -x "$DEPOT_TOOLS/ensure_bootstrap" ]; then
                   "$DEPOT_TOOLS/ensure_bootstrap"
@@ -74,9 +74,12 @@ jobs:
               fi
 
               PYTHON3="$DEPOT_TOOLS/python-bin/python3"
+              VPYTHON3="$DEPOT_TOOLS/vpython3"
               test -x "$PYTHON3"
+              test -x "$VPYTHON3"
               "$PYTHON3" --version
-              "$DEPOT_TOOLS/gn" --version
+              which -a gn
+              gn --version
 
               cd "$WORKSPACE"
               git -C chromium/src config user.email "drm-build@example.invalid"
@@ -93,10 +96,10 @@ jobs:
               fi
 
               rm -rf out/arm64_drm
-              "$DEPOT_TOOLS/gn" gen --args="target_os = \"android\" target_cpu = \"arm64\" $(cat ../../cromite/build/cromite.gn_args)" out/arm64_drm
+              gn gen --args="target_os = \"android\" target_cpu = \"arm64\" $(cat ../../cromite/build/cromite.gn_args)" out/arm64_drm
 
-              "$PYTHON3" "$DEPOT_TOOLS/siso.py" ninja -C out/arm64_drm chrome_public_bundle --offline
-              "$PYTHON3" "$DEPOT_TOOLS/siso.py" ninja -C out/arm64_drm chrome_public_apk --offline
+              "$VPYTHON3" "$DEPOT_TOOLS/siso.py" ninja -C out/arm64_drm chrome_public_bundle --offline
+              "$VPYTHON3" "$DEPOT_TOOLS/siso.py" ninja -C out/arm64_drm chrome_public_apk --offline
 
               APK="out/arm64_drm/apks/ChromePublic.apk"
               test -f "$APK"
