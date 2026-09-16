@@ -27,6 +27,7 @@ jobs:
           # Remove only that disabling patch; leave the rest of Cromite intact.
           PATCH_LIST="$GITHUB_WORKSPACE/cromite-source/build/cromite_patches_list.txt"
           sed -i '/^Disable-DRM-media-origin-IDs-preprovisioning\.patch$/d' "$PATCH_LIST"
+          ! grep -F 'Disable-DRM-media-origin-IDs-preprovisioning.patch' "$PATCH_LIST"
 
       - name: Build with Cromite Android build container
         shell: bash
@@ -34,18 +35,21 @@ jobs:
           set -euo pipefail
           docker pull uazo/chromium:153.0.8010.37
           docker run --rm \
-            -v "$GITHUB_WORKSPACE/cromite-source:/home/lg/working_dir/cromite" \
+            -v "$GITHUB_WORKSPACE/cromite-source:/home/lg/working_dir/cromium/src/cromite" \
             -v "$GITHUB_WORKSPACE/artifacts:/output" \
             -v "$GITHUB_WORKSPACE/build-drm.sh:/home/lg/build-drm.sh:ro" \
             uazo/chromium:153.0.8010.37 bash /home/lg/build-drm.sh
 
-      - name: Verify APK
+      - name: Verify APK and build metadata
         shell: bash
         run: |
           set -euo pipefail
           test -s artifacts/Cromite-DRM-Android-ARM64.apk
           test "$(cat artifacts/Cromite-DRM-package.txt)" = "org.cromite.cromite"
-          test "$(cat artifacts/Cromite-DRM-status.txt)" = "Android ARM64 + MediaDrm/Widevine registration"
+          test "$(cat artifacts/Cromite-DRM-status.txt)" = "Android ARM64 + Android MediaDrm/Widevine + H.264/AAC"
+          test -s artifacts/Cromite-DRM-version.txt
+          test -s artifacts/Cromite-DRM-source-revision.txt
+          unzip -t artifacts/Cromite-DRM-Android-ARM64.apk >/dev/null
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
