@@ -37,7 +37,6 @@ jobs:
           docker run --rm \
             -v "$GITHUB_WORKSPACE/cromite-source:/home/lg/working_dir/cromite" \
             -v "$GITHUB_WORKSPACE/artifacts:/output" \
-            -e DEPOT_TOOLS=/home/lg/depot_tools \
             "$IMAGE" bash -lc '
               set -eo pipefail
 
@@ -45,19 +44,30 @@ jobs:
               export HOME=/home/lg/working_dir
               export TARGET_ISDEBUG=true
               export TARGET_OS=android
-              export DEPOT_TOOLS="${DEPOT_TOOLS:-/home/lg/depot_tools}"
-              export PATH="/home/lg/depot_tools:$WORKSPACE/chromium/src/third_party/llvm-build/Release+Asserts/bin:/usr/local/go/bin:/home/lg/mtool:$PATH"
+              export DEPOT_TOOLS=/home/lg/depot_tools
 
-              # Bootstrap depot_tools Python when the image does not already
-              # contain the marker required by its python3 wrapper.
+              # The Cromite build image does not contain depot_tools, so install
+              # the official Chromium depot_tools checkout inside the container.
+              if [ ! -d "$DEPOT_TOOLS/.git" ]; then
+                rm -rf "$DEPOT_TOOLS"
+                git clone --depth 1 https://chromium.googlesource.com/chromium/tools/depot_tools.git "$DEPOT_TOOLS"
+              fi
+
+              export PATH="$DEPOT_TOOLS:$WORKSPACE/chromium/src/third_party/llvm-build/Release+Asserts/bin:/usr/local/go/bin:/home/lg/mtool:$PATH"
+
+              # Bootstrap depot_tools Python when this checkout has not yet been
+              # initialized. Different depot_tools revisions expose different
+              # bootstrap entry points, so try the supported entry points in order.
               if [ ! -f "$DEPOT_TOOLS/python3_bin_reldir.txt" ]; then
                 if [ -x "$DEPOT_TOOLS/ensure_bootstrap" ]; then
                   "$DEPOT_TOOLS/ensure_bootstrap"
+                elif [ -x "$DEPOT_TOOLS/bootstrap" ]; then
+                  "$DEPOT_TOOLS/bootstrap"
                 elif [ -x "$DEPOT_TOOLS/update_depot_tools" ]; then
                   "$DEPOT_TOOLS/update_depot_tools"
                 else
-                  echo "No depot_tools bootstrap command available" >&2
-                  find "$DEPOT_TOOLS" -maxdepth 1 -type f -printf "%f\n" | sort >&2
+                  echo "depot_tools was cloned but no bootstrap entry point was found" >&2
+                  ls -la "$DEPOT_TOOLS" >&2
                   exit 1
                 fi
               fi
