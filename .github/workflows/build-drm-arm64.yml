@@ -27,10 +27,8 @@ jobs:
           mkdir -p "$GITHUB_WORKSPACE/artifacts" "$GITHUB_WORKSPACE/cromite-source"
           git clone --depth 1 https://github.com/uazo/cromite.git "$GITHUB_WORKSPACE/cromite-source"
 
-          # The upstream container contains the matching Chromium source and
-          # build toolchain. We apply Cromite's normal patch set, except for
-          # the one patch that explicitly disables Android MediaDrm
-          # preprovisioning.
+          # Remove the single Cromite patch that explicitly disables Android
+          # MediaDrm preprovisioning. All other Cromite patches remain enabled.
           sed -i '/^Disable-DRM-media-origin-IDs-preprovisioning\.patch$/d' \
             "$GITHUB_WORKSPACE/cromite-source/build/cromite_patches_list.txt"
 
@@ -51,11 +49,10 @@ jobs:
               git config user.email "drm-build@example.invalid"
               git config user.name "Cromite DRM Build"
 
-              # Apply the current Cromite patch set, with only the DRM
-              # preprovisioning-disabling patch removed.
+              # Apply the same patch set used by Cromite, except the one
+              # patch that disables Android MediaDrm preprovisioning.
               bash "$WORKSPACE/cromite/tools/images/cromite-source/apply-cromite-patches.sh"
 
-              # Confirm that the disabling patch did not get applied.
               if git grep -n "SET_CROMITE_FEATURE_DISABLED(kMediaDrmPreprovisioning)" -- .; then
                 echo "DRM disabling patch is still present" >&2
                 exit 1
