@@ -54,8 +54,6 @@ jobs:
 
               export PATH="$WORKSPACE/chromium/src/buildtools/linux64:$DEPOT_TOOLS:$WORKSPACE/chromium/src/third_party/llvm-build/Release+Asserts/bin:/usr/local/go/bin:/home/lg/mtool/bin:$PATH"
 
-              # Current depot_tools intentionally starts uninitialized on a fresh
-              # clone. bootstrap_python3 is the supported Linux bootstrap path.
               if [ ! -f "$DEPOT_TOOLS/python3_bin_reldir.txt" ]; then
                 if [ -x "$DEPOT_TOOLS/bootstrap_python3" ]; then
                   source "$DEPOT_TOOLS/bootstrap_python3"
@@ -86,6 +84,41 @@ jobs:
               bash "$WORKSPACE/cromite/tools/images/cromite-source/apply-cromite-patches.sh"
 
               cd "$WORKSPACE/chromium/src"
+
+              # Chromium 153 expects this clang package stamp. The prebuilt
+              # toolchain is already present in the uazo/chromium image, but
+              # the stamp can be absent after exporting the source tree.
+              CLANG_STAMP_DIR="third_party/llvm-build/Release+Asserts"
+              CLANG_STAMP="$CLANG_STAMP_DIR/cr_build_revision"
+              if [ ! -s "$CLANG_STAMP" ]; then
+                CLANG_PACKAGE="$($PYTHON3 - <<'PY'
+import ast
+from pathlib import Path
+p = Path("tools/clang/scripts/update.py")
+t = ast.parse(p.read_text())
+values = {}
+for node in t.body:
+    if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+        name = node.targets[0].id
+        if name in {"CLANG_REVISION", "CLANG_SUB_REVISION", "PACKAGE_VERSION"}:
+            try:
+                values[name] = ast.literal_eval(node.value)
+            except Exception:
+                pass
+if "PACKAGE_VERSION" in values:
+    print(values["PACKAGE_VERSION"])
+elif "CLANG_REVISION" in values and "CLANG_SUB_REVISION" in values:
+    print(f"{values['CLANG_REVISION']}-{values['CLANG_SUB_REVISION']}")
+else:
+    raise SystemExit("Could not determine Chromium clang package version")
+PY
+)"
+                test -n "$CLANG_PACKAGE"
+                mkdir -p "$CLANG_STAMP_DIR"
+                printf '%s,linux\n' "$CLANG_PACKAGE" > "$CLANG_STAMP"
+              fi
+              echo "Using Chromium clang stamp: $(cat "$CLANG_STAMP")"
+              test -x "$CLANG_STAMP_DIR/bin/clang"
 
               # Verify the Cromite MediaDrm disabling feature was not applied.
               if git grep -n "SET_CROMITE_FEATURE_DISABLED(kMediaDrmPreprovisioning)" -- .; then
