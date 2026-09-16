@@ -27,8 +27,8 @@ jobs:
           mkdir -p "$GITHUB_WORKSPACE/artifacts" "$GITHUB_WORKSPACE/cromite-source"
           git clone --depth 1 https://github.com/uazo/cromite.git "$GITHUB_WORKSPACE/cromite-source"
 
-          # Remove the single Cromite patch that explicitly disables Android
-          # MediaDrm preprovisioning. All other Cromite patches remain enabled.
+          # Remove only Cromite's patch that explicitly disables Android
+          # MediaDrm preprovisioning. Keep every other Cromite patch unchanged.
           sed -i '/^Disable-DRM-media-origin-IDs-preprovisioning\.patch$/d' \
             "$GITHUB_WORKSPACE/cromite-source/build/cromite_patches_list.txt"
 
@@ -39,15 +39,38 @@ jobs:
             -v "$GITHUB_WORKSPACE/artifacts:/output" \
             "$IMAGE" bash -lc '
               set -euxo pipefail
+
               export WORKSPACE=/home/lg/working_dir
-              export HOME=/home/lg/working_dir
               export TARGET_ISDEBUG=true
               export TARGET_OS=android
+              export DEPOT_TOOLS_UPDATE=1
+              export DEPOT_TOOLS_BOOTSTRAP_PYTHON3=1
               export PATH="$WORKSPACE/chromium/src/third_party/llvm-build/Release+Asserts/bin:$WORKSPACE/depot_tools:/usr/local/go/bin:$WORKSPACE/mtool/bin:$PATH"
 
               cd "$WORKSPACE/chromium/src"
               git config user.email "drm-build@example.invalid"
               git config user.name "Cromite DRM Build"
+
+              # The container image ships depot_tools but its Python bootstrap
+              # marker may be absent. Bootstrap it explicitly before invoking
+              # gn/siso/ninja. Do not rely on an inherited host depot_tools.
+              DEPOT_TOOLS="$WORKSPACE/depot_tools"
+              if [ ! -f "$DEPOT_TOOLS/python3_bin_reldir.txt" ]; then
+                if [ -x "$DEPOT_TOOLS/ensure_bootstrap" ]; then
+                  "$DEPOT_TOOLS/ensure_bootstrap"
+                elif [ -x "$DEPOT_TOOLS/update_depot_tools" ]; then
+                  "$DEPOT_TOOLS/update_depot_tools"
+                else
+                  echo "No depot_tools bootstrap entry point found" >&2
+                  ls -la "$DEPOT_TOOLS" >&2
+                  exit 1
+                fi
+              fi
+
+              test -f "$DEPOT_TOOLS/python3_bin_reldir.txt"
+              "$DEPOT_TOOLS/python3" --version
+              "$DEPOT_TOOLS/gn" --version
+              "$DEPOT_TOOLS/siso" --help >/dev/null
 
               # Apply the same patch set used by Cromite, except the one
               # patch that disables Android MediaDrm preprovisioning.
@@ -59,10 +82,10 @@ jobs:
               fi
 
               rm -rf out/arm64_drm
-              gn gen --args="target_os = \"android\" target_cpu = \"arm64\" $(cat ../../cromite/build/cromite.gn_args)" out/arm64_drm
+              "$DEPOT_TOOLS/gn" gen --args="target_os = \"android\" target_cpu = \"arm64\" $(cat ../../cromite/build/cromite.gn_args)" out/arm64_drm
 
-              python3 "$WORKSPACE/depot_tools/siso.py" ninja -C out/arm64_drm chrome_public_bundle --offline
-              python3 "$WORKSPACE/depot_tools/siso.py" ninja -C out/arm64_drm chrome_public_apk --offline
+              python3 "$DEPOT_TOOLS/siso.py" ninja -C out/arm64_drm chrome_public_bundle --offline
+              python3 "$DEPOT_TOOLS/siso.py" ninja -C out/arm64_drm chrome_public_apk --offline
 
               APK="out/arm64_drm/apks/ChromePublic.apk"
               test -f "$APK"
