@@ -19,7 +19,7 @@ jobs:
       - name: Build Cromite with Android DRM restored
         shell: bash
         run: |
-          set -euxo pipefail
+          set -eo pipefail
 
           VERSION="153.0.8010.37"
           IMAGE="uazo/chromium:${VERSION}"
@@ -37,18 +37,19 @@ jobs:
           docker run --rm \
             -v "$GITHUB_WORKSPACE/cromite-source:/home/lg/working_dir/cromite" \
             -v "$GITHUB_WORKSPACE/artifacts:/output" \
+            -e DEPOT_TOOLS=/home/lg/depot_tools \
             "$IMAGE" bash -lc '
-              set -euxo pipefail
+              set -eo pipefail
 
               export WORKSPACE=/home/lg/working_dir
               export HOME=/home/lg/working_dir
               export TARGET_ISDEBUG=true
               export TARGET_OS=android
-              export DEPOT_TOOLS=/home/lg/depot_tools
+              export DEPOT_TOOLS="${DEPOT_TOOLS:-/home/lg/depot_tools}"
               export PATH="/home/lg/depot_tools:$WORKSPACE/chromium/src/third_party/llvm-build/Release+Asserts/bin:/usr/local/go/bin:/home/lg/mtool:$PATH"
 
               # Bootstrap depot_tools Python when the image does not already
-              # contain the bootstrap marker required by python3.
+              # contain the marker required by its python3 wrapper.
               if [ ! -f "$DEPOT_TOOLS/python3_bin_reldir.txt" ]; then
                 if [ -x "$DEPOT_TOOLS/ensure_bootstrap" ]; then
                   "$DEPOT_TOOLS/ensure_bootstrap"
