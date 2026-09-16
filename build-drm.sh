@@ -32,11 +32,24 @@ test -x "$VPYTHON3"
 
 cd "$WORKSPACE"
 
-# Apply Cromite's normal patch stack. The GitHub workflow removes only
-# Cromite's DRM-preprovisioning-disabling patch before this script runs.
+# The workflow mounts the Cromite checkout directly at chromium/src/cromite.
+# Cromite's patch helper is shipped by the build image at the workspace root.
+# Do not use a nested tools/images/cromite-source path: that path does not exist
+# in the current Cromite container layout.
+PATCH_HELPER=""
+for candidate in \
+  "$WORKSPACE/apply-cromite-patches.sh" \
+  "$WORKSPACE/chromium/src/cromite/tools/apply-all-patch.sh"; do
+  if [ -f "$candidate" ]; then
+    PATCH_HELPER="$candidate"
+    break
+  fi
+done
+
+test -n "$PATCH_HELPER"
 git -C chromium/src config user.email "cromite-drm-build@example.invalid"
 git -C chromium/src config user.name "Cromite DRM Build"
-bash "$WORKSPACE/chromium/src/cromite/tools/images/cromite-source/apply-cromite-patches.sh"
+bash "$PATCH_HELPER"
 
 cd "$WORKSPACE/chromium/src"
 
