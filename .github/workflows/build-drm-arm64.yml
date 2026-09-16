@@ -47,28 +47,26 @@ jobs:
               export DEPOT_TOOLS=/home/lg/depot_tools
               export DEPOT_TOOLS_UPDATE=0
 
-              # The image contains the Chromium source/build environment but
-              # not a usable depot_tools checkout for this standalone runner.
               if [ ! -d "$DEPOT_TOOLS/.git" ]; then
                 rm -rf "$DEPOT_TOOLS"
                 git clone --depth 1 https://chromium.googlesource.com/chromium/tools/depot_tools.git "$DEPOT_TOOLS"
               fi
 
-              # Cromite's own build environment puts GN in buildtools/linux64;
-              # depot_tools' gn wrapper only locates it when that directory is
-              # also on PATH.
               export PATH="$WORKSPACE/chromium/src/buildtools/linux64:$DEPOT_TOOLS:$WORKSPACE/chromium/src/third_party/llvm-build/Release+Asserts/bin:/usr/local/go/bin:/home/lg/mtool/bin:$PATH"
 
-              # Bootstrap the Python runtime used by current depot_tools.
+              # Current depot_tools intentionally starts uninitialized on a fresh
+              # clone. bootstrap_python3 is the supported Linux bootstrap path.
               if [ ! -f "$DEPOT_TOOLS/python3_bin_reldir.txt" ]; then
-                if [ -x "$DEPOT_TOOLS/ensure_bootstrap" ]; then
+                if [ -x "$DEPOT_TOOLS/bootstrap_python3" ]; then
+                  source "$DEPOT_TOOLS/bootstrap_python3"
+                  bootstrap_python3
+                elif [ -x "$DEPOT_TOOLS/ensure_bootstrap" ]; then
                   "$DEPOT_TOOLS/ensure_bootstrap"
-                elif [ -x "$DEPOT_TOOLS/bootstrap" ]; then
-                  "$DEPOT_TOOLS/bootstrap"
                 elif [ -x "$DEPOT_TOOLS/update_depot_tools" ]; then
                   "$DEPOT_TOOLS/update_depot_tools"
                 else
-                  echo "No supported depot_tools bootstrap entry point found" >&2
+                  echo "No supported depot_tools Python bootstrap entry point found" >&2
+                  find "$DEPOT_TOOLS" -maxdepth 2 -type f \( -name 'bootstrap_python3' -o -name 'ensure_bootstrap' -o -name 'update_depot_tools' \) -print >&2
                   exit 1
                 fi
               fi
