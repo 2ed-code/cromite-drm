@@ -1,0 +1,77 @@
+name: Cromite Android ARM64 - official DRM
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 1440
+    steps:
+      - name: Checkout DRM build repository
+        uses: actions/checkout@v4
+
+      - name: Build Cromite with Android DRM restored
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          VERSION="153.0.8010.37"
+          CROMITE_SHA="a711448b5f74eb02bc5f2e71d6db9bde12150311"
+          IMAGE="uazo/cromite-build:${VERSION}-${CROMITE_SHA}"
+
+          mkdir -p "$GITHUB_WORKSPACE/artifacts"
+          docker pull "$IMAGE"
+
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE/artifacts:/output" \
+            -e VERSION="$VERSION" \
+            "$IMAGE" bash -lc '
+              set -euxo pipefail
+              export WORKSPACE=/home/lg/working_dir
+              export HOME=/home/lg/working_dir
+              export TARGET_ISDEBUG=true
+              export TARGET_OS=android
+              export PATH="$WORKSPACE/chromium/src/third_party/llvm-build/Release+Asserts/bin:$WORKSPACE/depot_tools:/usr/local/go/bin:$WORKSPACE/mtool/bin:$PATH"
+
+              cd "$WORKSPACE/chromium/src"
+
+              # Cromite applies this patch by default. Revert only that patch;
+              # this restores Chromium's normal Android MediaDrm preprovisioning
+              # path without bundling or extracting Widevine components.
+              DRM_COMMIT="$(git log --all --format=%H --grep="Disable DRM media origin IDs preprovisioning" -n 1 || true)"
+              test -n "$DRM_COMMIT"
+              git revert --no-edit "$DRM_COMMIT"
+
+              # Safety check: the Cromite feature-disabling line must no longer
+              # exist in the checked-out Chromium source.
+              if git grep -n "SET_CROMITE_FEATURE_DISABLED(kMediaDrmPreprovisioning)" -- .; then
+                echo "DRM disabling patch is still present" >&2
+                exit 1
+              fi
+
+              rm -rf out/arm64_drm
+              gn gen --args="target_os = \"android\" target_cpu = \"arm64\" $(cat ../../cromite/build/cromite.gn_args)" out/arm64_drm
+
+              python3 "$WORKSPACE/depot_tools/siso.py" ninja -C out/arm64_drm chrome_public_bundle --offline
+              python3 "$WORKSPACE/depot_tools/siso.py" ninja -C out/arm64_drm chrome_public_apk --offline
+
+              APK="out/arm64_drm/apks/ChromePublic.apk"
+              test -f "$APK"
+              cp "$APK" /output/Cromite-ARM64-DRM-debug.apk
+              cp ../../cromite/build/RELEASE /output/Cromite-version.txt
+              git rev-parse HEAD > /output/Cromite-source-revision.txt
+            '
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Cromite-ARM64-DRM
+          path: artifacts/
+          if-no-files-found: error
+          retention-days: 14
