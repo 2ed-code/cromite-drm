@@ -8,6 +8,9 @@ export TARGET_OS=android
 export DEPOT_TOOLS=/home/lg/depot_tools
 export DEPOT_TOOLS_UPDATE=0
 
+APP_NAME="Nexa Browser"
+PACKAGE_NAME="com.nexa.browser"
+
 if [ ! -d "$DEPOT_TOOLS/.git" ]; then
   rm -rf "$DEPOT_TOOLS"
   git clone --depth 1 https://chromium.googlesource.com/chromium/tools/depot_tools.git "$DEPOT_TOOLS"
@@ -40,8 +43,12 @@ gn --version
 
 cd "$WORKSPACE"
 git -C chromium/src config user.email "drm-build@example.invalid"
-git -C chromium/src config user.name "Cromite DRM Build"
+git -C chromium/src config user.name "Nexa Browser Build"
 bash "$WORKSPACE/cromite/tools/images/cromite-source/apply-cromite-patches.sh"
+
+# Apply project-owned branding after Cromite patches. This keeps the branding
+# layer isolated from upstream Chromium/Cromite and makes future rebases safer.
+bash "$WORKSPACE/cromite/branding/apply-branding.sh" "$WORKSPACE/chromium/src"
 
 cd "$WORKSPACE/chromium/src"
 
@@ -75,13 +82,15 @@ if git grep -n "SET_CROMITE_FEATURE_DISABLED(kMediaDrmPreprovisioning)" -- .; th
 fi
 
 rm -rf out/arm64_drm
-gn gen --args="target_os = \"android\" target_cpu = \"arm64\" $(cat ../../cromite/build/cromite.gn_args)" out/arm64_drm
+gn gen --args="target_os = \"android\" target_cpu = \"arm64\" chrome_public_manifest_package = \"$PACKAGE_NAME\" $(cat ../../cromite/build/cromite.gn_args)" out/arm64_drm
 
 "$VPYTHON3" "$DEPOT_TOOLS/siso.py" ninja -C out/arm64_drm chrome_public_bundle --offline
 "$VPYTHON3" "$DEPOT_TOOLS/siso.py" ninja -C out/arm64_drm chrome_public_apk --offline
 
 APK="out/arm64_drm/apks/ChromePublic.apk"
 test -f "$APK"
-cp "$APK" /output/Cromite-ARM64-DRM-debug.apk
-cp ../../cromite/build/RELEASE /output/Cromite-version.txt
-git rev-parse HEAD > /output/Cromite-source-revision.txt
+cp "$APK" "/output/NexaBrowser-ARM64-debug.apk"
+printf '%s\n' "$APP_NAME" > /output/NexaBrowser-name.txt
+printf '%s\n' "$PACKAGE_NAME" > /output/NexaBrowser-package.txt
+cp ../../cromite/build/RELEASE /output/NexaBrowser-version.txt
+git rev-parse HEAD > /output/NexaBrowser-source-revision.txt
