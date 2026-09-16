@@ -27,8 +27,8 @@ jobs:
           mkdir -p "$GITHUB_WORKSPACE/artifacts" "$GITHUB_WORKSPACE/cromite-source"
           git clone --depth 1 https://github.com/uazo/cromite.git "$GITHUB_WORKSPACE/cromite-source"
 
-          # Remove only Cromite's patch that explicitly disables Android
-          # MediaDrm preprovisioning. Keep every other Cromite patch unchanged.
+          # Restore Chromium's normal Android MediaDrm path by removing only
+          # Cromite's patch that disables MediaDrm preprovisioning.
           sed -i '/^Disable-DRM-media-origin-IDs-preprovisioning\.patch$/d' \
             "$GITHUB_WORKSPACE/cromite-source/build/cromite_patches_list.txt"
 
@@ -40,29 +40,28 @@ jobs:
             "$IMAGE" bash -lc '
               set -euxo pipefail
 
+              # The uazo/chromium image uses /home/lg as its build root and
+              # /home/lg/depot_tools. Keep WORKSPACE aligned with Cromite's
+              # patch/build scripts instead of inventing a second depot_tools.
               export WORKSPACE=/home/lg/working_dir
+              export HOME=/home/lg/working_dir
               export TARGET_ISDEBUG=true
               export TARGET_OS=android
-              export DEPOT_TOOLS_UPDATE=1
-              export DEPOT_TOOLS_BOOTSTRAP_PYTHON3=1
-              export PATH="$WORKSPACE/chromium/src/third_party/llvm-build/Release+Asserts/bin:$WORKSPACE/depot_tools:/usr/local/go/bin:$WORKSPACE/mtool/bin:$PATH"
+              export PATH="/home/lg/depot_tools:$WORKSPACE/chromium/src/third_party/llvm-build/Release+Asserts/bin:/usr/local/go/bin:/home/lg/mtool:$PATH"
 
-              cd "$WORKSPACE/chromium/src"
-              git config user.email "drm-build@example.invalid"
-              git config user.name "Cromite DRM Build"
+              DEPOT_TOOLS=/home/lg/depot_tools
 
-              # The container image ships depot_tools but its Python bootstrap
-              # marker may be absent. Bootstrap it explicitly before invoking
-              # gn/siso/ninja. Do not rely on an inherited host depot_tools.
-              DEPOT_TOOLS="$WORKSPACE/depot_tools"
+              # Bootstrap depot_tools before calling gn/siso. Lightweight
+              # containers can contain wrapper scripts without the Python
+              # bootstrap marker (python3_bin_reldir.txt).
               if [ ! -f "$DEPOT_TOOLS/python3_bin_reldir.txt" ]; then
                 if [ -x "$DEPOT_TOOLS/ensure_bootstrap" ]; then
                   "$DEPOT_TOOLS/ensure_bootstrap"
                 elif [ -x "$DEPOT_TOOLS/update_depot_tools" ]; then
                   "$DEPOT_TOOLS/update_depot_tools"
                 else
-                  echo "No depot_tools bootstrap entry point found" >&2
-                  ls -la "$DEPOT_TOOLS" >&2
+                  echo "No depot_tools bootstrap command available" >&2
+                  find "$DEPOT_TOOLS" -maxdepth 1 -type f -printf "%f\n" | sort >&2
                   exit 1
                 fi
               fi
@@ -70,12 +69,19 @@ jobs:
               test -f "$DEPOT_TOOLS/python3_bin_reldir.txt"
               "$DEPOT_TOOLS/python3" --version
               "$DEPOT_TOOLS/gn" --version
-              "$DEPOT_TOOLS/siso" --help >/dev/null
 
-              # Apply the same patch set used by Cromite, except the one
-              # patch that disables Android MediaDrm preprovisioning.
+              # Cromite's patch script expects to be invoked from
+              # /home/lg/working_dir, not chromium/src.
+              cd "$WORKSPACE"
+              git -C chromium/src config user.email "drm-build@example.invalid"
+              git -C chromium/src config user.name "Cromite DRM Build"
+
               bash "$WORKSPACE/cromite/tools/images/cromite-source/apply-cromite-patches.sh"
 
+              cd "$WORKSPACE/chromium/src"
+
+              # Safety check: the explicit Cromite DRM-disabling feature must
+              # not be present after the patch set is applied.
               if git grep -n "SET_CROMITE_FEATURE_DISABLED(kMediaDrmPreprovisioning)" -- .; then
                 echo "DRM disabling patch is still present" >&2
                 exit 1
@@ -84,8 +90,8 @@ jobs:
               rm -rf out/arm64_drm
               "$DEPOT_TOOLS/gn" gen --args="target_os = \"android\" target_cpu = \"arm64\" $(cat ../../cromite/build/cromite.gn_args)" out/arm64_drm
 
-              python3 "$DEPOT_TOOLS/siso.py" ninja -C out/arm64_drm chrome_public_bundle --offline
-              python3 "$DEPOT_TOOLS/siso.py" ninja -C out/arm64_drm chrome_public_apk --offline
+              "$DEPOT_TOOLS/python3" "$DEPOT_TOOLS/siso.py" ninja -C out/arm64_drm chrome_public_bundle --offline
+              "$DEPOT_TOOLS/python3" "$DEPOT_TOOLS/siso.py" ninja -C out/arm64_drm chrome_public_apk --offline
 
               APK="out/arm64_drm/apks/ChromePublic.apk"
               test -f "$APK"
