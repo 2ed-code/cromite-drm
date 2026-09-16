@@ -40,9 +40,8 @@ jobs:
             "$IMAGE" bash -lc '
               set -euxo pipefail
 
-              # The uazo/chromium image uses /home/lg as its build root and
-              # /home/lg/depot_tools. Keep WORKSPACE aligned with Cromite's
-              # patch/build scripts instead of inventing a second depot_tools.
+              # uazo/chromium keeps the Chromium checkout under
+              # /home/lg/working_dir and depot_tools at /home/lg/depot_tools.
               export WORKSPACE=/home/lg/working_dir
               export HOME=/home/lg/working_dir
               export TARGET_ISDEBUG=true
@@ -51,9 +50,8 @@ jobs:
 
               DEPOT_TOOLS=/home/lg/depot_tools
 
-              # Bootstrap depot_tools before calling gn/siso. Lightweight
-              # containers can contain wrapper scripts without the Python
-              # bootstrap marker (python3_bin_reldir.txt).
+              # Bootstrap the image's depot_tools Python environment. This
+              # creates python3_bin_reldir.txt when the lightweight image lacks it.
               if [ ! -f "$DEPOT_TOOLS/python3_bin_reldir.txt" ]; then
                 if [ -x "$DEPOT_TOOLS/ensure_bootstrap" ]; then
                   "$DEPOT_TOOLS/ensure_bootstrap"
@@ -67,7 +65,13 @@ jobs:
               fi
 
               test -f "$DEPOT_TOOLS/python3_bin_reldir.txt"
-              "$DEPOT_TOOLS/python3" --version
+              PYTHON3="$DEPOT_TOOLS/python3"
+              if [ ! -x "$PYTHON3" ]; then
+                PY_REL="$(cat "$DEPOT_TOOLS/python3_bin_reldir.txt")"
+                PYTHON3="$DEPOT_TOOLS/$PY_REL"
+              fi
+              test -x "$PYTHON3"
+              "$PYTHON3" --version
               "$DEPOT_TOOLS/gn" --version
 
               # Cromite's patch script expects to be invoked from
@@ -90,8 +94,8 @@ jobs:
               rm -rf out/arm64_drm
               "$DEPOT_TOOLS/gn" gen --args="target_os = \"android\" target_cpu = \"arm64\" $(cat ../../cromite/build/cromite.gn_args)" out/arm64_drm
 
-              "$DEPOT_TOOLS/python3" "$DEPOT_TOOLS/siso.py" ninja -C out/arm64_drm chrome_public_bundle --offline
-              "$DEPOT_TOOLS/python3" "$DEPOT_TOOLS/siso.py" ninja -C out/arm64_drm chrome_public_apk --offline
+              "$PYTHON3" "$DEPOT_TOOLS/siso.py" ninja -C out/arm64_drm chrome_public_bundle --offline
+              "$PYTHON3" "$DEPOT_TOOLS/siso.py" ninja -C out/arm64_drm chrome_public_apk --offline
 
               APK="out/arm64_drm/apks/ChromePublic.apk"
               test -f "$APK"
