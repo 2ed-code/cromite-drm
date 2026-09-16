@@ -1,4 +1,4 @@
-name: Nexa Browser - Android ARM64
+name: Cromite DRM - Android ARM64
 
 on:
   push:
@@ -16,40 +16,41 @@ jobs:
       - name: Checkout project
         uses: actions/checkout@v4
 
-      - name: Build Nexa Browser v0.2 branding
+      - name: Prepare Cromite source
         shell: bash
         run: |
           set -euo pipefail
-          VERSION="153.0.8010.37"
-          IMAGE="uazo/chromium:${VERSION}"
           mkdir -p "$GITHUB_WORKSPACE/artifacts" "$GITHUB_WORKSPACE/cromite-source"
-
           git clone --depth 1 https://github.com/uazo/cromite.git "$GITHUB_WORKSPACE/cromite-source"
 
-          # Keep the normal Android MediaDrm preprovisioning path.
-          sed -i '/^Disable-DRM-media-origin-IDs-preprovisioning\.patch$/d' \
-            "$GITHUB_WORKSPACE/cromite-source/build/cromite_patches_list.txt"
+          # Cromite intentionally disables Android DRM media pre-provisioning.
+          # Remove only that disabling patch; leave the rest of Cromite intact.
+          PATCH_LIST="$GITHUB_WORKSPACE/cromite-source/build/cromite_patches_list.txt"
+          sed -i '/^Disable-DRM-media-origin-IDs-preprovisioning\.patch$/d' "$PATCH_LIST"
 
-          docker pull "$IMAGE"
+      - name: Build with Cromite Android build container
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker pull uazo/chromium:153.0.8010.37
           docker run --rm \
             -v "$GITHUB_WORKSPACE/cromite-source:/home/lg/working_dir/cromite" \
             -v "$GITHUB_WORKSPACE/artifacts:/output" \
             -v "$GITHUB_WORKSPACE/build-drm.sh:/home/lg/build-drm.sh:ro" \
-            -v "$GITHUB_WORKSPACE/branding:/home/lg/working_dir/cromite/branding:ro" \
-            "$IMAGE" bash /home/lg/build-drm.sh
+            uazo/chromium:153.0.8010.37 bash /home/lg/build-drm.sh
 
-      - name: Verify branding outputs
+      - name: Verify APK
         shell: bash
         run: |
           set -euo pipefail
-          test -f artifacts/NexaBrowser-ARM64-debug.apk
-          test "$(cat artifacts/NexaBrowser-name.txt)" = "Nexa Browser"
-          test "$(cat artifacts/NexaBrowser-package.txt)" = "com.nexa.browser"
+          test -s artifacts/Cromite-DRM-Android-ARM64.apk
+          test "$(cat artifacts/Cromite-DRM-package.txt)" = "org.cromite.cromite"
+          test "$(cat artifacts/Cromite-DRM-status.txt)" = "Android ARM64 + MediaDrm/Widevine registration"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: NexaBrowser-v0.2-Android-ARM64
+          name: Cromite-DRM-Android-ARM64
           path: artifacts/
           if-no-files-found: error
           retention-days: 14
