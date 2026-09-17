@@ -7,10 +7,31 @@ export TARGET_ISDEBUG=true
 export TARGET_OS=android
 export DEPOT_TOOLS=/home/lg/depot_tools
 export DEPOT_TOOLS_UPDATE=0
+export GIT_TERMINAL_PROMPT=0
 
-if [ ! -d "$DEPOT_TOOLS/.git" ]; then
-  git clone --depth 1 https://chromium.googlesource.com/chromium/tools/depot_tools.git "$DEPOT_TOOLS"
+# The uazo/chromium image does not guarantee a usable depot_tools checkout.
+# Create a clean checkout and retry because the build container is created on
+# a fresh GitHub runner and transient git transport failures are possible.
+if [ ! -x "$DEPOT_TOOLS/python-bin/python3" ] || [ ! -x "$DEPOT_TOOLS/vpython3" ]; then
+  rm -rf "$DEPOT_TOOLS"
+  for attempt in 1 2 3; do
+    echo "[build] cloning depot_tools (attempt $attempt/3)"
+    if git -c http.version=HTTP/1.1 clone --depth 1 \
+      https://chromium.googlesource.com/chromium/tools/depot_tools.git \
+      "$DEPOT_TOOLS"; then
+      break
+    fi
+    rm -rf "$DEPOT_TOOLS"
+    if [ "$attempt" -lt 3 ]; then
+      sleep 5
+    fi
+  done
 fi
+
+test -x "$DEPOT_TOOLS/python-bin/python3" || {
+  echo "[build] depot_tools bootstrap files are missing after clone" >&2
+  exit 1
+}
 
 export PATH="$WORKSPACE/chromium/src/buildtools/linux64:$DEPOT_TOOLS:$WORKSPACE/chromium/src/third_party/llvm-build/Release+Asserts/bin:$PATH"
 
