@@ -32,21 +32,11 @@ test -x "$VPYTHON3"
 
 cd "$WORKSPACE"
 
-# The workflow mounts the Cromite checkout directly at chromium/src/cromite.
-# Cromite's patch helper is shipped by the build image at the workspace root.
-# Do not use a nested tools/images/cromite-source path: that path does not exist
-# in the current Cromite container layout.
-PATCH_HELPER=""
-for candidate in \
-  "$WORKSPACE/apply-cromite-patches.sh" \
-  "$WORKSPACE/chromium/src/cromite/tools/apply-all-patch.sh"; do
-  if [ -f "$candidate" ]; then
-    PATCH_HELPER="$candidate"
-    break
-  fi
-done
+# The workflow mounts the Cromite checkout at chromium/src/cromite.
+# Use the patch helper shipped inside that checkout.
+PATCH_HELPER="$WORKSPACE/chromium/src/cromite/tools/images/cromite-source/apply-cromite-patches.sh"
+test -f "$PATCH_HELPER"
 
-test -n "$PATCH_HELPER"
 git -C chromium/src config user.email "cromite-drm-build@example.invalid"
 git -C chromium/src config user.name "Cromite DRM Build"
 bash "$PATCH_HELPER"
@@ -55,9 +45,8 @@ cd "$WORKSPACE/chromium/src"
 
 # Android Chromium uses the device's Android MediaDrm implementation for
 # Widevine. We do not bundle, copy, or bypass any proprietary Widevine CDM,
-# certificate, key, or license. Normal Android external-intent handling is
-# intentionally left untouched; this project does not add an external-app
-# blocker.
+# certificate, key, or license. Normal Chromium external-intent handling is
+# intentionally restored by omitting Cromite's external-intent blocking patch.
 ARGS="target_os = \"android\" target_cpu = \"arm64\" $(cat ../../cromite/build/cromite.gn_args)"
 ARGS="$ARGS chrome_public_manifest_package = \"org.cromite.cromite\""
 ARGS="$ARGS enable_widevine = true"
@@ -69,8 +58,6 @@ ARGS="$ARGS ffmpeg_branding = \"Chrome\""
 rm -rf out/arm64_drm
 gn gen --args="$ARGS" out/arm64_drm
 
-# Build-time invariants: fail instead of producing an APK if the important
-# DRM/media configuration was not accepted by GN.
 gn args out/arm64_drm --list > /tmp/cromite-drm-gn-args.txt
 for required in \
   'enable_widevine = true' \
@@ -81,8 +68,9 @@ for required in \
   grep -F "$required" /tmp/cromite-drm-gn-args.txt >/dev/null
 done
 
-# The disabling Cromite patch must never be present after patch application.
-! grep -R "Disable-DRM-media-origin-IDs-preprovisioning" \
+# These blockers must never be in the patch stack used for this build.
+! grep -E \
+  '^(Add-flag-to-disable-external-intent-requests|Block-Intents-While-Locked|Disable-DRM-media-origin-IDs-preprovisioning)\.patch$' \
   "$WORKSPACE/chromium/src/cromite/build/cromite_patches_list.txt" >/dev/null 2>&1
 
 "$VPYTHON3" "$DEPOT_TOOLS/siso.py" ninja -C out/arm64_drm chrome_public_bundle --offline
